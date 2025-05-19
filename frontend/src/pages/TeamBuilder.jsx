@@ -28,7 +28,7 @@ export default function TeamBuilder() {
         setError(null);
 
         // Fetch from your backend or supabase as needed
-        const res = await fetch("http://localhost:8000/players");
+        const res = await fetch("https://vdc-fantasy-backend.onrender.com/players");
         if (!res.ok) throw new Error("Failed to fetch players");
         const data = await res.json();
         setPlayers(data);
@@ -74,7 +74,7 @@ export default function TeamBuilder() {
         return;
       }
 
-      const res = await fetch("http://localhost:8000/fantasy-team", {
+      const res = await fetch("https://vdc-fantasy-backend.onrender.com/fantasy-team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
