@@ -6,4 +6,4 @@ pydantic
 asyncpg
 sqlalchemy
 databases
-supabase-community>=1.0.3
+supabase
