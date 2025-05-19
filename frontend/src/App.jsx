@@ -25,7 +25,6 @@ function AppContent() {
       {loading && <LoadingScreen message="Loading page..." />}
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/auth/callback" element={<Callback />} />
         <Route path="/callback" element={<Callback />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/team-builder" element={<TeamBuilder />} />
