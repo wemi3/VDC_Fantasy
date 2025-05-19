@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+pydantic
+asyncpg
+sqlalchemy
+databases
+supabase-community>=1.0.3

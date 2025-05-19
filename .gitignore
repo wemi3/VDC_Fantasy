@@ -1,0 +1,41 @@
+# Node modules (frontend)
+frontend/node_modules/
+backend/vdc-scraper/node_modules/
+
+# Build outputs
+frontend/dist/
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+
+# Environment files - ignore all .env files anywhere
+**/.env
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# VSCode settings
+.vscode/
+
+# Mac OS system files
+.DS_Store
+
+# Python virtual environments (if any)
+backend/venv/
+backend/env/
+backend/.venv/
+
+# Pytest cache
+backend/.pytest_cache/
+
+# Pycharm
+.idea/
+
+# Scraper temporary files
+backend/vdc-scraper/.cache/
+
+# Misc
+*.swp
