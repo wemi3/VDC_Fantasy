@@ -5,7 +5,7 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        redirectTo: 'https://vdc-fantasy.vercel.app/callback',
+        redirectTo: 'https://vdc-fantasy.vercel.app/auth/callback',
       },
     });
     if (error) {
