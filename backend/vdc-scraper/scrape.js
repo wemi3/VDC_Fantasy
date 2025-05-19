@@ -1,4 +1,4 @@
-require('dotenv').config({ path: '../.env' });
+require('dotenv').config();
 
 const puppeteer = require('puppeteer');
 const { createClient } = require('@supabase/supabase-js');
