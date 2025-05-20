@@ -10,7 +10,7 @@ app.include_router(fantasy.router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://vdc-fantasy.vercel.app"],
+    allow_origins=["https://vdc-fantasy.vercel.app", "https://vdc-fantasy-backend.onrender.com/players"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
