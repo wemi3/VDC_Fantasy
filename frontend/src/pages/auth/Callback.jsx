@@ -15,8 +15,9 @@ export default function DiscordCallback() {
         return;
       }
 
-      // Call your backend to exchange code for user info
-      const { data } = await axios.post('/api/discord/oauth', { code });
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:10000";
+
+      const { data } = await axios.post(`${backendUrl}/api/discord/oauth`, { code });
 
       // Upsert user in Supabase
       await supabase.from('users').upsert({
