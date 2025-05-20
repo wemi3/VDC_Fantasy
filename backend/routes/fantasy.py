@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
+import requests
+from fastapi.responses import JSONResponse
 import httpx
 import os
 from dotenv import load_dotenv
@@ -6,7 +8,6 @@ from  supabase import create_client
 from typing import List
 from pydantic import BaseModel
 import uuid
-from fastapi import Header
 from datetime import datetime, timezone
 
 load_dotenv()
@@ -171,30 +172,37 @@ async def discord_oauth(request: Request):
     data = await request.json()
     code = data.get("code")
 
-    # Exchange code for access token
-    token_resp = requests.post(
-        "https://discord.com/api/oauth2/token",
-        data={
-            "client_id": DISCORD_CLIENT_ID,
-            "client_secret": DISCORD_CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": DISCORD_REDIRECT_URI,
-        },
-        headers={"Content-Type": "application/x-www-form-urlencoded"}
-    )
+    async with httpx.AsyncClient() as client:
+        # Step 1: Exchange code for token
+        token_resp = await client.post(
+            "https://discord.com/api/oauth2/token",
+            data={
+                "client_id": DISCORD_CLIENT_ID,
+                "client_secret": DISCORD_CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": DISCORD_REDIRECT_URI,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
 
-    token_data = token_resp.json()
-    access_token = token_data.get("access_token")
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to exchange code for token")
 
-    # Get user info with access token
-    user_resp = requests.get(
-        "https://discord.com/api/users/@me",
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
-    user_data = user_resp.json()
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
 
-    # Return only safe info (no email)
+        # Step 2: Get user info
+        user_resp = await client.get(
+            "https://discord.com/api/users/@me",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        if user_resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch user info")
+
+        user_data = user_resp.json()
+
     return JSONResponse({
         "discord_id": user_data["id"],
         "username": f"{user_data['username']}#{user_data['discriminator']}",
