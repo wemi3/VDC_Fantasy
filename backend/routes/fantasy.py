@@ -8,11 +8,16 @@ from typing import List
 from pydantic import BaseModel
 from datetime import datetime, timezone
 
-load_dotenv()
+env_file = ".env.local" if os.getenv("ENV", "development") == "development" else ".env"
+load_dotenv(dotenv_path=env_file)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID")
+DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET")
+DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI")
 
 router = APIRouter()
 
@@ -38,7 +43,7 @@ async def get_players():
 class FantasyTeam(BaseModel):
     player_ids: List[str]
     mmr_total: int
-    user_id: str  # use mock for now
+    user_id: str
 
 @router.post("/fantasy-team")
 async def submit_team(team: FantasyTeam):
@@ -49,13 +54,16 @@ async def submit_team(team: FantasyTeam):
             detail="Team editing is locked after May 27th.",
         )
     
-    print("Received team submission:", team.dict())
+    # Check if user exists
+    user_res = supabase.table("users").select("*").eq("supabase_user_id", team.user_id).execute()
+    if not user_res.data:
+        raise HTTPException(status_code=400, detail="User not found. Please sync user first.")
+    
     data = {
         "user_id": team.user_id,
         "player_ids": team.player_ids,
         "mmr_total": team.mmr_total,
     }
-    print("Upserting fantasy team with data:", data)
 
     existing_team = supabase.table("fantasy_teams").select("*").eq("user_id", team.user_id).execute()
 
@@ -67,7 +75,7 @@ async def submit_team(team: FantasyTeam):
         return {"message": "Team created", "data": res.data}
 
 @router.post("/teams")
-def fetch_teams_by_user_id(user_id: str):
+async def fetch_teams_by_user_id(user_id: str):
     try:
         res = supabase.table("fantasy_teams").select("*").eq("user_id", user_id).execute()
         if res.data:
@@ -82,7 +90,7 @@ def calculate_fantasy_points(kills: int, deaths: int, assists: int, acs: int) ->
     return round((kills * 2) + (assists * 1.5) - (deaths * 1) + (acs * 0.05), 2)
 
 @router.post("/add-player-match-stats/")
-def add_player_match_stat(payload: dict):
+async def add_player_match_stat(payload: dict):
     fp = calculate_fantasy_points(
         payload["kills"], payload["deaths"], payload["assists"], payload["acs"]
     )
@@ -98,21 +106,39 @@ def add_player_match_stat(payload: dict):
     return {"message": "Stat added", "fantasy_points": fp}
 
 @router.get("/leaderboard")
-async def get_leaderboard():    
-    query = """
-    SELECT 
-        ft.id AS team_id, 
-        ft.user_id, 
-        SUM(pms.fantasy_points) AS total_fantasy_points
-    FROM fantasy_teams ft
-    JOIN players_combine pc ON pc.id = ANY(ft.player_ids)
-    LEFT JOIN player_match_stats pms ON pms.player_id = pc.id
-    GROUP BY ft.id, ft.user_id
-    ORDER BY total_fantasy_points DESC
-    LIMIT 10
-    """
-    result = supabase.from_sql(query)
-    return result
+async def get_leaderboard():
+    # Use supabase.from with filters and joins is limited,
+    # better to create a Postgres RPC function for complex queries or do multiple queries here.
+    # Here is a simplified approach with multiple queries:
+
+    # Get top teams with player_ids
+    teams_res = supabase.table("fantasy_teams").select("id, user_id, player_ids").execute()
+    if teams_res.error:
+        raise HTTPException(status_code=500, detail=teams_res.error.message)
+
+    teams = teams_res.data
+
+    # For each team, sum fantasy_points of players
+    leaderboard = []
+    for team in teams:
+        player_ids = team.get("player_ids") or []
+        if not player_ids:
+            total_fp = 0
+        else:
+            stats_res = supabase.table("player_match_stats").select("fantasy_points").in_("player_id", player_ids).execute()
+            if stats_res.error:
+                total_fp = 0
+            else:
+                total_fp = sum(stat["fantasy_points"] for stat in stats_res.data or [])
+        leaderboard.append({
+            "team_id": team["id"],
+            "user_id": team["user_id"],
+            "total_fantasy_points": total_fp,
+        })
+
+    # Sort descending by total_fantasy_points and limit 10
+    leaderboard_sorted = sorted(leaderboard, key=lambda x: x["total_fantasy_points"], reverse=True)[:10]
+    return leaderboard_sorted
 
 @router.post("/auth/sync_user")
 async def sync_user(authorization: str = Header(...)):
@@ -133,19 +159,16 @@ async def sync_user(authorization: str = Header(...)):
     avatar_url = metadata.get("avatar_url")
 
     upsert_response = supabase.table("users").upsert({
-        "id": user_id,
-        "username": username,
-        "avatar_url": avatar_url
-    }).execute()
+    "supabase_user_id": user_id,
+    "username": username,
+    "avatar_url": avatar_url
+}).execute()
+
 
     if upsert_response.error:
         raise HTTPException(status_code=500, detail=f"Failed to upsert user: {upsert_response.error.message}")
 
     return {"message": "User synced", "username": username}
-
-DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID")
-DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET")
-DISCORD_REDIRECT_URI = "https://vdc-fantasy.vercel.app/callback"
 
 @router.post("/api/discord/oauth")
 async def discord_oauth(request: Request):
@@ -181,8 +204,47 @@ async def discord_oauth(request: Request):
 
         user_data = user_resp.json()
 
+        discord_id = user_data["id"]
+        username = user_data["username"]
+        discriminator = user_data["discriminator"]
+        avatar_hash = user_data["avatar"]
+
+        if discriminator != "0":
+            full_username = f"{username}#{discriminator}"
+        else:
+            full_username = username
+
+        if avatar_hash:
+            avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png"
+        else:
+            avatar_url = None
+
+    # Check if user exists
+    existing_user_resp = supabase.table("users").select("*").eq("discord_id", discord_id).execute()
+
+    if existing_user_resp.data is None:
+        raise HTTPException(status_code=500, detail="Error querying Supabase users")
+
+    if len(existing_user_resp.data) == 0:
+        # Insert new user
+        insert_resp = supabase.table("users").insert({
+            "discord_id": discord_id,
+            "username": full_username,
+            "avatar_url": avatar_url,
+        }).execute()
+
+        if insert_resp.data is None or len(insert_resp.data) == 0:
+            raise HTTPException(status_code=500, detail="Failed to insert user")
+
+        supabase_user_id = insert_resp.data[0]["supabase_user_id"]
+    else:
+        # User already exists
+        supabase_user_id = existing_user_resp.data[0]["supabase_user_id"]
+
     return JSONResponse({
-        "discord_id": user_data["id"],
-        "username": f"{user_data['username']}#{user_data['discriminator']}",
-        "avatar": user_data["avatar"]
+        "discord_id": discord_id,
+        "username": full_username,
+        "avatar": avatar_url,
+        "supabase_user_id": supabase_user_id
     })
+

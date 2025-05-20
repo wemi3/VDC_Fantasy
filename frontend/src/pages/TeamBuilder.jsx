@@ -5,6 +5,7 @@ const MAX_TEAM_SIZE = 5;
 const MAX_MMR_TOTAL = 1500;
 const PLAYERS_PER_PAGE = 50;
 const LOCK_DEADLINE = new Date("2025-05-27T23:59:59Z"); // UTC deadline
+const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:10000";
 
 export default function TeamBuilder() {
   const [players, setPlayers] = useState([]);
@@ -27,8 +28,7 @@ export default function TeamBuilder() {
         setLoading(true);
         setError(null);
 
-        // Fetch from your backend or supabase as needed
-        const res = await fetch("https://vdc-fantasy-backend.onrender.com/players");
+        const res = await fetch(`${backendUrl}/players`);
         if (!res.ok) throw new Error("Failed to fetch players");
         const data = await res.json();
         setPlayers(data);
@@ -74,7 +74,8 @@ export default function TeamBuilder() {
         return;
       }
 
-      const res = await fetch("https://vdc-fantasy-backend.onrender.com/fantasy-team", {
+      // Using Supabase user ID (not Discord ID) for backend submission
+      const res = await fetch(`${backendUrl}/fantasy-team`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -304,17 +305,9 @@ export default function TeamBuilder() {
 
         {/* Submission Status */}
         {submissionStatus && (
-          <div
-            className={`mt-8 p-5 rounded-xl shadow-lg text-center font-semibold ${
-              submissionStatus.toLowerCase().includes("success")
-                ? "bg-green-600 text-white"
-                : "bg-red-600 text-white"
-            }`}
-            role="alert"
-            aria-live="polite"
-          >
+          <p className="mt-8 text-center font-semibold text-[#00baff]">
             {submissionStatus}
-          </div>
+          </p>
         )}
       </div>
     </main>

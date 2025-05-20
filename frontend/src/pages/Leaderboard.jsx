@@ -20,6 +20,7 @@ export default function Leaderboard() {
 
         if (fantasyTeamsError) throw fantasyTeamsError;
 
+        // Flatten all player IDs from all teams
         const playerIds = fantasyTeams.flatMap((team) => team.player_ids);
 
         const { data: playersData, error: playersError } = await supabase
@@ -36,7 +37,9 @@ export default function Leaderboard() {
 
         if (matchStatsError) throw matchStatsError;
 
+        // Extract all user UUIDs for lookup
         const userIds = fantasyTeams.map((team) => team.user_id);
+
         const { data: users, error: usersError } = await supabase
           .from("users")
           .select("id, username, avatar_url")
@@ -44,10 +47,12 @@ export default function Leaderboard() {
 
         if (usersError) throw usersError;
 
+        // Map user ID (UUID) to user data
         const userMap = Object.fromEntries(
           users.map((u) => [u.id, { username: u.username, avatar_url: u.avatar_url }])
         );
 
+        // Map player ID to their total fantasy points
         const playerPointsMap = {};
         matchStats.forEach(({ player_id, fantasy_points }) => {
           if (!playerPointsMap[player_id]) playerPointsMap[player_id] = 0;
@@ -59,6 +64,7 @@ export default function Leaderboard() {
           fantasy_points: playerPointsMap[player.id] || 0,
         }));
 
+        // Calculate total fantasy points per team and add user info
         const leaderboardData = fantasyTeams.map((team) => {
           const totalPoints = team.player_ids.reduce((sum, playerId) => {
             const player = playersWithPoints.find((p) => p.id === playerId);

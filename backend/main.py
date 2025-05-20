@@ -12,7 +12,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://vdc-fantasy.vercel.app",
-        "http://localhost:3000",  # if using local frontend dev
+        "http://localhost:5173",  # if using local frontend dev
     ],
     allow_credentials=True,
     allow_methods=["*"],

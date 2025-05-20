@@ -1,7 +1,7 @@
 // login.jsx
 const DISCORD_CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID
-const REDIRECT_URI = encodeURIComponent('https://vdc-fantasy.vercel.app/callback');
-const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=https%3A%2F%2Fvdc-fantasy.vercel.app%2Fcallback&response_type=code&scope=identify`;
+const REDIRECT_URI = encodeURIComponent(import.meta.env.VITE_REDIRECT_URI);
+const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=identify`;
 
 export default function Login() {
   const handleLogin = () => {
