@@ -166,7 +166,7 @@ DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET")
 DISCORD_REDIRECT_URI = "https://vdc-fantasy.vercel.app/callback"
 
-@app.post("/api/discord/oauth")
+@router.post("/api/discord/oauth")
 async def discord_oauth(request: Request):
     data = await request.json()
     code = data.get("code")
