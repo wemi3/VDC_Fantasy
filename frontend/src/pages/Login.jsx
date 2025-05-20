@@ -1,16 +1,12 @@
-import supabase from '../supabase';
+// login.jsx
+const DISCORD_CLIENT_ID = import.meta.env.DISCORD_CLIENT_ID
+const REDIRECT_URI = encodeURIComponent('https://vdc-fantasy.vercel.app/discord/callback');
+const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=https%3A%2F%2Fvdc-fantasy.vercel.app%2Fcallback&response_type=code&scope=identify`;
 
 export default function Login() {
-  const handleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'discord',
-      options: {
-        redirectTo: 'https://vdc-fantasy.vercel.app/callback',
-      },
-    });
-    if (error) {
-      console.error('Discord login error:', error.message);
-    }
+  const handleLogin = () => {
+    // Redirect user to Discord's custom OAuth URL
+    window.location.href = oauthUrl;
   };
 
   return (

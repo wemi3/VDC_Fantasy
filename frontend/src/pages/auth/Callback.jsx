@@ -1,45 +1,36 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import supabase from '../../supabase'; // or '../../supabase' depending on your structure
+import axios from 'axios';
+import supabase from '../../supabase';
 
-export default function Callback() {
+export default function DiscordCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const finishLogin = async () => {
-      console.log('Window location hash:', window.location.hash);
-      console.log('Fetching session from Supabase...');
+    const handleDiscordCallback = async () => {
+      const code = new URLSearchParams(window.location.search).get('code');
 
-      // Wait briefly to ensure session is persisted
-      const { data: { session }, error } = await supabase.auth.getSession();
-
-      if (error || !session) {
-        console.error('Session fetch error or session missing:', error);
+      if (!code) {
         navigate('/login');
         return;
       }
 
-      if (session) {
-        const { user } = session;
-        const { full_name, avatar_url } = user.user_metadata;
+      // Call your backend to exchange code for user info
+      const { data } = await axios.post('/api/discord/oauth', { code });
 
-        await supabase.from('users').upsert({
-          id: user.id,
-          username: full_name,
-          avatar_url,
-        });
+      // Upsert user in Supabase
+      await supabase.from('users').upsert({
+        discord_id: data.discord_id,
+        username: data.username,
+        avatar: data.avatar,
+      });
 
-      }
-      console.log('Session retrieved:', session);
+      // You can set a local session or Supabase cookie, or redirect
       navigate('/dashboard');
     };
 
-    finishLogin();
+    handleDiscordCallback();
   }, [navigate]);
 
-  return (
-    <div className="flex items-center justify-center h-screen">
-      <p className="text-lg">Redirecting...</p>
-    </div>
-  );
+  return <div className="text-white">Connecting your Discord...</div>;
 }

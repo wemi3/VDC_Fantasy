@@ -161,3 +161,42 @@ async def sync_user(authorization: str = Header(...)):
         raise HTTPException(status_code=500, detail=f"Failed to upsert user: {upsert_response.error.message}")
 
     return {"message": "User synced", "username": username}
+
+DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID")
+DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET")
+DISCORD_REDIRECT_URI = "https://vdc-fantasy.vercel.app/callback"
+
+@app.post("/api/discord/oauth")
+async def discord_oauth(request: Request):
+    data = await request.json()
+    code = data.get("code")
+
+    # Exchange code for access token
+    token_resp = requests.post(
+        "https://discord.com/api/oauth2/token",
+        data={
+            "client_id": DISCORD_CLIENT_ID,
+            "client_secret": DISCORD_CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": DISCORD_REDIRECT_URI,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
+    )
+
+    token_data = token_resp.json()
+    access_token = token_data.get("access_token")
+
+    # Get user info with access token
+    user_resp = requests.get(
+        "https://discord.com/api/users/@me",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    user_data = user_resp.json()
+
+    # Return only safe info (no email)
+    return JSONResponse({
+        "discord_id": user_data["id"],
+        "username": f"{user_data['username']}#{user_data['discriminator']}",
+        "avatar": user_data["avatar"]
+    })
