@@ -26,14 +26,19 @@ export default function Dashboard() {
       setUser(user);
 
       const { data: team, error: teamError } = await supabase
-        .from("fantasy_teams")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+  .from("fantasy_teams")
+  .select("*")
+  .eq("user_id", user.id)
+  .maybeSingle();
 
-      if (teamError) return setError("Failed to fetch fantasy team");
+if (teamError) return setError("Failed to fetch fantasy team");
 
-      setFantasyTeam(team);
+if (!team) {
+  setFantasyTeam(null);
+  return; // Don't try to fetch player data if team doesn't exist
+}
+
+setFantasyTeam(team);
 
       const { data: playerData, error: playerError } = await supabase
         .from("players_combine")
