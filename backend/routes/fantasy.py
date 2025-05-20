@@ -149,20 +149,33 @@ async def sync_user(authorization: str = Header(...)):
 
     user_response = supabase.auth.get_user(token)
 
-    if user_response.get("error") or not user_response.get("data"):
-        raise HTTPException(status_code=401, detail="Invalid token or user not found")
+    if hasattr(user_response, "error") and user_response.error is not None:
+        raise HTTPException(status_code=401, detail=f"Invalid token or user not found: {user_response.error}")
 
-    user = user_response["data"]["user"]
+    if not hasattr(user_response, "data") or user_response.data is None:
+        raise HTTPException(status_code=401, detail="User data not found")
+
+    user = user_response.data.get("user")
+    if user is None:
+        raise HTTPException(status_code=401, detail="User data is empty")
+
     user_id = user.get("id")
-    metadata = user.get("user_metadata") or {}
+    metadata = user.get("user_metadata", {})
     username = metadata.get("full_name") or metadata.get("name") or "Unknown"
     avatar_url = metadata.get("avatar_url")
 
     upsert_response = supabase.table("users").upsert({
-    "supabase_user_id": user_id,
-    "username": username,
-    "avatar_url": avatar_url
-}).execute()
+        "supabase_user_id": user_id,
+        "username": username,
+        "avatar_url": avatar_url
+    }).execute()
+
+    if hasattr(upsert_response, "error") and upsert_response.error:
+        raise HTTPException(status_code=500, detail=f"Failed to upsert user: {upsert_response.error}")
+
+    return {"message": "User synced", "username": username}
+
+
 
 
     if upsert_response.error:
@@ -175,7 +188,11 @@ async def discord_oauth(request: Request):
     data = await request.json()
     code = data.get("code")
 
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing OAuth code")
+
     async with httpx.AsyncClient() as client:
+        # Exchange code for token
         token_resp = await client.post(
             "https://discord.com/api/oauth2/token",
             data={
@@ -185,66 +202,70 @@ async def discord_oauth(request: Request):
                 "code": code,
                 "redirect_uri": DISCORD_REDIRECT_URI,
             },
-            headers={"Content-Type": "application/x-www-form-urlencoded"}
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-
         if token_resp.status_code != 200:
             raise HTTPException(status_code=400, detail="Failed to exchange code for token")
 
         token_data = token_resp.json()
         access_token = token_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="No access token returned")
 
+        # Get Discord user info
         user_resp = await client.get(
             "https://discord.com/api/users/@me",
-            headers={"Authorization": f"Bearer {access_token}"}
+            headers={"Authorization": f"Bearer {access_token}"},
         )
-
         if user_resp.status_code != 200:
             raise HTTPException(status_code=400, detail="Failed to fetch user info")
 
         user_data = user_resp.json()
-
         discord_id = user_data["id"]
         username = user_data["username"]
         discriminator = user_data["discriminator"]
-        avatar_hash = user_data["avatar"]
+        avatar_hash = user_data.get("avatar")
 
-        if discriminator != "0":
-            full_username = f"{username}#{discriminator}"
-        else:
-            full_username = username
+        full_username = f"{username}#{discriminator}" if discriminator != "0" else username
 
-        if avatar_hash:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png"
-        else:
-            avatar_url = None
+        avatar_url = (
+            f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png"
+            if avatar_hash else None
+        )
 
-    # Check if user exists
-    existing_user_resp = supabase.table("users").select("*").eq("discord_id", discord_id).execute()
+    # Query Supabase users table to find existing user
+    try:
+        existing_user_resp = supabase.table("users").select("*").eq("discord_id", discord_id).execute()
+    except APIError as e:
+        raise HTTPException(status_code=500, detail=f"Database query error: {e}")
 
-    if existing_user_resp.data is None:
-        raise HTTPException(status_code=500, detail="Error querying Supabase users")
+    existing_users = existing_user_resp.data
+    if existing_users and len(existing_users) > 0:
+        supabase_user_id = existing_users[0].get("supabase_user_id")
+        if not supabase_user_id:
+            raise HTTPException(status_code=500, detail="User exists but supabase_user_id is missing")
+    else:
+        # If user is not found, you can choose to create them here or reject
+        raise HTTPException(status_code=400, detail="User not registered in Supabase Auth")
 
-    if len(existing_user_resp.data) == 0:
-        # Insert new user
-        insert_resp = supabase.table("users").insert({
+    # Upsert user info including supabase_user_id to avoid NOT NULL violation
+    try:
+        upsert_resp = supabase.table("users").upsert({
             "discord_id": discord_id,
             "username": full_username,
             "avatar_url": avatar_url,
-        }).execute()
+            "supabase_user_id": supabase_user_id,
+        }, on_conflict="discord_id").execute()
+    except APIError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upsert user: {e}")
 
-        if insert_resp.data is None or len(insert_resp.data) == 0:
-            raise HTTPException(status_code=500, detail="Failed to insert user")
-
-        supabase_user_id = insert_resp.data[0]["supabase_user_id"]
-    else:
-        # User already exists
-        supabase_user_id = existing_user_resp.data[0]["supabase_user_id"]
+    if not upsert_resp.data:
+        raise HTTPException(status_code=500, detail="Failed to upsert user - no data returned")
 
     return JSONResponse({
         "discord_id": discord_id,
         "username": full_username,
         "avatar": avatar_url,
-        "supabase_user_id": supabase_user_id
+        "supabase_user_id": supabase_user_id,
     })
 

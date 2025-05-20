@@ -20,25 +20,27 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchUserAndTeam = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
+      const { data, error } = await supabase.auth.getUser();
       if (error) return setError("Failed to fetch user");
+      if (!data || !data.user) return setError("No user found");
 
-      setUser(user);
+      setUser(data.user);
 
+      // Use data.user.id directly here instead of user.id
       const { data: team, error: teamError } = await supabase
-  .from("fantasy_teams")
-  .select("*")
-  .eq("user_id", user.id)
-  .maybeSingle();
+        .from("fantasy_teams")
+        .select("*")
+        .eq("user_id", data.user.id)
+        .maybeSingle();
 
-if (teamError) return setError("Failed to fetch fantasy team");
+      if (teamError) return setError("Failed to fetch fantasy team");
 
-if (!team) {
-  setFantasyTeam(null);
-  return; // Don't try to fetch player data if team doesn't exist
-}
+      if (!team) {
+        setFantasyTeam(null);
+        return; // Don't try to fetch player data if team doesn't exist
+      }
 
-setFantasyTeam(team);
+      setFantasyTeam(team);
 
       const { data: playerData, error: playerError } = await supabase
         .from("players_combine")
